@@ -7,7 +7,7 @@ Qo'shimcha buyruqlar: /claim, /ball, /bozor, /dokon, /sandiq, /guess, /harem,
 import random
 import time
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, dice
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import users as user_db
 from database import collections as col_db
