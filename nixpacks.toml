@@ -1,3 +1,4 @@
+# Dockerfile ishlatiladi — bu fayl faqat zaxira
 [phases.install]
 cmds = ["pip install -r bot/requirements.txt"]
 
