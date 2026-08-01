@@ -1,18 +1,26 @@
 FROM python:3.11-slim
 
-# System dependencies
+# Build tools (asyncpg C extension uchun kerak)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
+    build-essential \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies
+# Pip yangilash va dependencies o'rnatish
 COPY bot/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy bot source
+# Bot kodini ko'chirish
 COPY bot/ ./bot/
 
-# Start bot
-CMD ["python3", "bot/main.py"]
+# Unbuffered output (loglar tezroq ko'rinsin)
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Botni ishga tushirish
+CMD ["python3", "-u", "bot/main.py"]
