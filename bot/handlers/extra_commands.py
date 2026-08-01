@@ -902,11 +902,9 @@ async def cmd_changetime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Bu buyruq faqat guruh adminlari uchun!")
         return
 
+    from database import groups as grp_db
     if not context.args:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT spawn_interval FROM group_settings WHERE group_id=$1", chat.id)
-        current = row["spawn_interval"] if row else 100
+        current = await grp_db.get_spawn_threshold(chat.id)
         await update.message.reply_text(
             f"⏰ <b>SPAWN VAQTINI O'ZGARTIRISH</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -930,13 +928,7 @@ async def cmd_changetime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif interval > 500:
         interval = 500
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO group_settings (group_id, spawn_interval) VALUES ($1,$2) "
-            "ON CONFLICT (group_id) DO UPDATE SET spawn_interval=$2, updated_at=NOW()",
-            chat.id, interval
-        )
+    await grp_db.set_spawn_threshold(chat.id, interval)
 
     await update.message.reply_text(
         f"✅ Spawn intervali o'zgartirildi!\n"

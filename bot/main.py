@@ -244,6 +244,10 @@ async def emergency_filter(update: Update, context) -> bool:
 def build_app(token: str) -> Application:
     app = Application.builder().token(token).post_init(on_startup).build()
 
+    # ── Ban tekshiruvi (barcha handlerlardan oldin, group=-1) ──
+    app.add_handler(MessageHandler(filters.ALL, ban_check_middleware), group=-1)
+    app.add_handler(CallbackQueryHandler(ban_check_middleware), group=-1)
+
     # ── Admin buyruqlari ──
     app.add_handler(CommandHandler('panel', cmd_panel))
     app.add_handler(CommandHandler('admin', cmd_panel))
@@ -312,7 +316,8 @@ def build_app(token: str) -> Application:
     app.add_handler(CommandHandler('topgroups', cmd_topgroups))
     app.add_handler(CommandHandler('search', cmd_search))
     app.add_handler(CommandHandler('anime', cmd_anime))
-    app.add_handler(CommandHandler('stats', cmd_stats_full))
+    app.add_handler(CommandHandler('stats', cmd_stats))
+    app.add_handler(CommandHandler('statsadmin', cmd_stats_full))
     app.add_handler(CommandHandler('favorite', cmd_favorite))
     app.add_handler(CommandHandler('fav', cmd_favorite))
     app.add_handler(CommandHandler('history', cmd_history))
@@ -378,11 +383,17 @@ def build_app(token: str) -> Application:
 
 async def _private_message_handler(update: Update, context):
     """Private chat text xabarlarini yo'naltirish."""
-    # Menyu tugmalarini birinchi tekshirish
+    # 1. Asosiy menyu tugmalari (Kunlik bonus, Sandiqlar, Do'kon…)
     from utils.menu import handle_menu_button
     if await handle_menu_button(update, context):
         return
-    # Boshqa text → admin input
+    # 2. Admin panel tugmalari (➕ Waifu qo'shish, 🗑 Waifular ro'yxati…)
+    #    handle_panel_button None qaytaradi, shuning uchun to'g'ridan matn tekshiramiz
+    text = (update.message.text or "").strip() if update.message else ""
+    if text in ALL_PANEL_BUTTONS:
+        await handle_panel_button(update, context)
+        return
+    # 3. Boshqa text → admin holatlar uchun kirish qabul qilish
     await handle_admin_input(update, context)
 
 
