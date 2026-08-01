@@ -16,7 +16,7 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for ch in channels:
         try:
             member = await context.bot.get_chat_member(ch["channel_id"], user.id)
-            if member.status in ("left", "kicked", "banned"):
+            if member.status in ("left", "kicked", "banned", "restricted"):
                 not_subscribed.append(ch)
         except Exception:
             pass
@@ -25,9 +25,9 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         lines = ["🔒 <b>Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling:</b>\n"]
         buttons = []
         for ch in not_subscribed:
-            name = ch.get("channel_name") or ch["channel_id"]
+            name = ch.get("channel_name") or str(ch["channel_id"])
             lines.append(f"• <b>{name}</b>")
-            cid = ch["channel_id"]
+            cid = str(ch["channel_id"])
             if not cid.startswith("-"):
                 link = f"https://t.me/{cid.lstrip('@')}"
                 buttons.append([InlineKeyboardButton(f"📢 {name}", url=link)])

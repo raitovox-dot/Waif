@@ -146,6 +146,7 @@ async def cmd_ball(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(3)  # Animatsiya tugashini kutish
 
     if dice_val >= 5:  # 5 yoki 6 — g'alaba
+        await user_db.remove_coins(user.id, bet)  # stavkani olish
         waifu = await waifu_db.get_random_waifu_by_rarity_weight()
         if waifu:
             await col_db.add_to_collection(user.id, waifu["waifu_id"])
@@ -156,11 +157,12 @@ async def cmd_ball(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{emoji} <b>{waifu['name']}</b>\n"
                 f"🎌 {waifu['anime']} | {waifu['rarity']}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"✅ Kolleksiyangizga qo'shildi!",
+                f"✅ Kolleksiyangizga qo'shildi!\n"
+                f"💸 Stavka: -{bet} coin",
                 parse_mode="HTML"
             )
         else:
-            await user_db.add_coins(user.id, bet * 2)
+            await user_db.add_coins(user.id, bet)  # stavkani qaytarish
             await update.message.reply_text(
                 f"🎲 <b>Zar: {dice_val}</b> — 🎉 G'ALABA!\n"
                 f"💰 <b>{bet * 2}</b> coin yutdingiz!",

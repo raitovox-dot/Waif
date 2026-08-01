@@ -42,6 +42,7 @@ BTN_RMADMIN   = "🔴 Admin o'chirish"
 BTN_ADDSUBADM = "🟡 Sub-Admin qo'shish"
 BTN_ADDGROUP  = "🔓 Guruh qo'shish"
 BTN_EMERGENCY = "🚨 Emergency Mode"
+BTN_PROMO     = "🎫 Promo Kodlar"
 BTN_CLOSE     = "🚪 Panelni yopish"
 
 # Sub-admin faqat ko'ra oladigan tugmalar
@@ -53,7 +54,7 @@ ALL_PANEL_BUTTONS = {
     BTN_BAN, BTN_UNBAN, BTN_BROADCAST, BTN_EVENT,
     BTN_STATS, BTN_SPAWN, BTN_TITLE, BTN_USERS,
     BTN_ADDADMIN, BTN_RMADMIN, BTN_ADDSUBADM, BTN_ADDGROUP,
-    BTN_EMERGENCY, BTN_CLOSE,
+    BTN_EMERGENCY, BTN_PROMO, BTN_CLOSE,
 }
 
 SUB_ADMIN_BLOCKED_RARITY = {"Mythick", "Legendary", "Premium", "Exclusive", "Divine"}
@@ -110,6 +111,11 @@ S_TITLE_TXT   = "title_txt"
 S_SPAWN_SET   = "spawn_set"
 S_ADDGROUP_BP = "addgroup_bypass"
 
+# Promo kodlar
+S_PROMO_CODE  = "promo_code"
+S_PROMO_COINS = "promo_coins"
+S_PROMO_USES  = "promo_uses"
+
 PAGE_SIZE = 8
 
 # Barcha matnli state-lar (foto kutilmaydi)
@@ -123,6 +129,7 @@ _TEXT_STATES = {
     S_ADDADMIN, S_ADDSUBADM, S_RMADMIN,
     S_ADDCH_ID, S_ADDCH_NAME,
     S_TITLE_UID, S_TITLE_TXT, S_SPAWN_SET, S_ADDGROUP_BP,
+    S_PROMO_CODE, S_PROMO_COINS, S_PROMO_USES,
 }
 
 
@@ -149,7 +156,7 @@ def _panel_kb(role: str) -> ReplyKeyboardMarkup:
             [BTN_TITLE, BTN_USERS],
             [BTN_ADDADMIN, BTN_ADDSUBADM],
             [BTN_RMADMIN, BTN_ADDGROUP],
-            [BTN_EMERGENCY],
+            [BTN_PROMO, BTN_EMERGENCY],
             [BTN_CLOSE],
         ]
     else:  # admin
@@ -162,7 +169,7 @@ def _panel_kb(role: str) -> ReplyKeyboardMarkup:
             [BTN_STATS, BTN_SPAWN],
             [BTN_TITLE, BTN_USERS],
             [BTN_ADDCH, BTN_RMCH],
-            [BTN_EMERGENCY],
+            [BTN_PROMO, BTN_EMERGENCY],
             [BTN_CLOSE],
         ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -300,6 +307,41 @@ async def _show_waifu_edit_menu(message, waifu_id: str):
 # ══════════════════════════════════════════════════════
 #  GURUHLAR
 # ══════════════════════════════════════════════════════
+
+async def _show_promos(message):
+    from database.db import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM redeem_codes ORDER BY created_at DESC LIMIT 20"
+        )
+    codes = [dict(r) for r in rows]
+    lines = ["🎫 <b>PROMO KODLAR</b>\n━━━━━━━━━━━━━━━━━━━━"]
+    btns = []
+    for c in codes:
+        status = "🟢" if c["is_active"] else "🔴"
+        uses = f"{c['used_count']}/{c['max_uses']}" if c["max_uses"] > 0 else f"{c['used_count']}/∞"
+        reward = ""
+        if c["reward_coins"]:
+            reward += f"💰{c['reward_coins']:,}"
+        if c["reward_waifu_rarity"]:
+            reward += f" 🎲{c['reward_waifu_rarity']}"
+        lines.append(f"{status} <code>{c['code']}</code> | {uses} | {reward or '—'}")
+        row_btns = []
+        if c["is_active"]:
+            row_btns.append(InlineKeyboardButton(f"❌ O'chirish", callback_data=f"adm_promo_off_{c['code']}"))
+        else:
+            row_btns.append(InlineKeyboardButton(f"✅ Yoqish", callback_data=f"adm_promo_on_{c['code']}"))
+        row_btns.append(InlineKeyboardButton("🗑 O'chirish", callback_data=f"adm_promo_del_{c['code']}"))
+        btns.append(row_btns)
+    btns.append([InlineKeyboardButton("➕ Yangi promo kod", callback_data="adm_promo_create")])
+    if not codes:
+        lines.append("Hali promo kodlar yo'q.")
+    await message.reply_text(
+        "\n".join(lines), parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(btns)
+    )
+
 
 async def _show_groups(message):
     gs = await waifu_db.get_all_groups_list()
@@ -496,6 +538,9 @@ async def handle_panel_button(update: Update, context: ContextTypes.DEFAULT_TYPE
             S_EW_NAME: "📝 Event waifu ismini kiriting (yoki /cancel).",
             S_EW_ANIME: "🎌 Anime nomini kiriting (yoki /cancel).",
             S_EW_PRICE: "💰 Narxni kiriting (yoki /cancel).",
+            S_PROMO_CODE: "🎫 Promo kod matni kiriting (yoki /cancel).",
+            S_PROMO_COINS: "💰 Coin miqdorini kiriting (yoki /cancel).",
+            S_PROMO_USES: "🔢 Maksimal foydalanish sonini kiriting (yoki /cancel).",
         }
         hint = state_hints.get(state, "Jarayon davom etmoqda. /cancel deb yozing.")
         await update.message.reply_text(hint, reply_markup=kb)
@@ -644,16 +689,18 @@ async def handle_panel_button(update: Update, context: ContextTypes.DEFAULT_TYPE
         from database.db import get_setting
         current = await get_setting("emergency_mode", "0")
         status = "🔴 AKTIV" if current == "1" else "🟢 NAKTIV"
+        em_action = "🔴 O'chirish uchun" if current == "1" else "🚨 Yoqish uchun"
+        em_btn = "🔴 Emergency O'chirish" if current == "1" else "🚨 Emergency Yoqish"
         await update.message.reply_text(
             f"🚨 <b>EMERGENCY MODE</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"Hozirgi holat: <b>{status}</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{'🔴 O\'chirish uchun' if current == '1' else '🚨 Yoqish uchun'} tugmani bosing:",
+            f"{em_action} tugmani bosing:",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    f"{'🔴 Emergency O\'chirish' if current == '1' else '🚨 Emergency Yoqish'}",
+                    em_btn,
                     callback_data="adm_emergency_toggle"
                 )
             ]])
@@ -724,6 +771,12 @@ async def handle_panel_button(update: Update, context: ContextTypes.DEFAULT_TYPE
             "🔴 <b>Admin o'chirish</b>\n\nUser ID kiriting:\n\n/cancel — bekor qilish",
             parse_mode="HTML", reply_markup=kb
         )
+        return
+
+    # ── Promo Kodlar ──
+    if text == BTN_PROMO:
+        _clear_state(context)
+        await _show_promos(update.message)
         return
 
     # ── Guruh bypass ──
@@ -1168,6 +1221,62 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"✅ Guruh <code>{gid}</code> bypass qilindi!", parse_mode="HTML", reply_markup=kb)
         return
 
+    # ── Promo Kod yaratish ──
+    if state == S_PROMO_CODE:
+        code = text.upper().replace(" ", "")
+        if not code:
+            await update.message.reply_text("❌ Kod bo'sh bo'lmasligi kerak.")
+            return
+        context.user_data[ADM_DATA] = {"promo_code": code}
+        context.user_data[ADM_STATE] = S_PROMO_COINS
+        await update.message.reply_text(
+            f"✅ Kod: <code>{code}</code>\n\n"
+            f"💰 Coin mukofoti kiriting (0 = yo'q):",
+            parse_mode="HTML", reply_markup=kb
+        )
+        return
+
+    if state == S_PROMO_COINS:
+        try:
+            coins = int(text.replace(",", "").replace(" ", ""))
+        except ValueError:
+            coins = 0
+        context.user_data[ADM_DATA]["promo_coins"] = coins
+        context.user_data[ADM_STATE] = S_PROMO_USES
+        await update.message.reply_text(
+            f"💰 Coin: <b>{coins:,}</b>\n\n"
+            f"🔢 Maksimal ishlatish soni kiriting (0 = cheksiz):",
+            parse_mode="HTML", reply_markup=kb
+        )
+        return
+
+    if state == S_PROMO_USES:
+        try:
+            max_uses = int(text.replace(",", "").replace(" ", ""))
+        except ValueError:
+            max_uses = 1
+        context.user_data[ADM_DATA]["promo_max_uses"] = max_uses
+        # Rarity tanlash uchun inline tugmalar
+        context.user_data[ADM_STATE] = None
+        rarity_btns = [
+            [InlineKeyboardButton(f"{get_rarity_emoji(r)} {r}", callback_data=f"adm_promo_rar_{r}")]
+            for r in RARITY_ORDER
+        ]
+        rarity_btns.append([InlineKeyboardButton("❌ Waifu yo'q (faqat coin)", callback_data="adm_promo_rar_none")])
+        data = context.user_data.get(ADM_DATA, {})
+        await update.message.reply_text(
+            f"🎫 <b>PROMO KOD TAFSILOTLARI</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📝 Kod: <code>{data.get('promo_code')}</code>\n"
+            f"💰 Coin: <b>{data.get('promo_coins', 0):,}</b>\n"
+            f"🔢 Limit: <b>{'Cheksiz' if max_uses == 0 else max_uses}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎲 Waifu mukofoti uchun rarity tanlang:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(rarity_btns)
+        )
+        return
+
 
 # ══════════════════════════════════════════════════════
 #  RASM HANDLERI
@@ -1448,6 +1557,60 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await _show_events(update.effective_message)
         return
 
+    # ══════════════════════════════════════════════════════
+    #  PROMO KOD CALLBACKLAR
+    # ══════════════════════════════════════════════════════
+
+    if data == "adm_promo_create":
+        context.user_data[ADM_STATE] = S_PROMO_CODE
+        context.user_data[ADM_DATA] = {}
+        await query.edit_message_text(
+            "🎫 <b>YANGI PROMO KOD</b>\n\n"
+            "Promo kod matnini kiriting:\n"
+            "Misol: <code>SUMMER2024</code>\n\n"
+            "/cancel — bekor qilish",
+            parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("adm_promo_rar_"):
+        rarity_val = data[14:]
+        await _finalize_promo_create(query, context, user, rarity_val)
+        return
+
+    if data.startswith("adm_promo_off_"):
+        code = data[14:]
+        from database.db import get_pool as _gp
+        pool = await _gp()
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE redeem_codes SET is_active=0 WHERE code=$1", code)
+        await query.edit_message_text(
+            f"🔴 <b>{code}</b> promo kod o'chirildi.", parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("adm_promo_on_"):
+        code = data[13:]
+        from database.db import get_pool as _gp
+        pool = await _gp()
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE redeem_codes SET is_active=1 WHERE code=$1", code)
+        await query.edit_message_text(
+            f"🟢 <b>{code}</b> promo kod yoqildi.", parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("adm_promo_del_"):
+        code = data[14:]
+        from database.db import get_pool as _gp
+        pool = await _gp()
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM redeem_codes WHERE code=$1", code)
+            await conn.execute("DELETE FROM redeem_history WHERE code=$1", code)
+        await query.edit_message_text(
+            f"🗑 <b>{code}</b> promo kod o'chirildi.", parse_mode="HTML"
+        )
+
     if data == "adm_create_event":
         context.user_data[ADM_STATE] = S_EVENT_NAME
         context.user_data[ADM_DATA] = {}
@@ -1500,6 +1663,47 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.edit_message_text("❌ Xatolik yuz berdi.")
         return
+
+
+async def _finalize_promo_create(query, context, user, rarity_or_none: str):
+    """Promo kodni yaratish oxirgi bosqichi."""
+    from database.db import get_pool
+    d = context.user_data.get(ADM_DATA, {})
+    code = d.get("promo_code", "")
+    coins = d.get("promo_coins", 0)
+    max_uses = d.get("promo_max_uses", 1)
+    rarity = None if rarity_or_none == "none" else rarity_or_none
+    if not code:
+        await query.edit_message_text("❌ Kod topilmadi. Qaytadan boshlang.")
+        _clear_state(context)
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow("SELECT 1 FROM redeem_codes WHERE code=$1", code)
+        if existing:
+            await query.edit_message_text(f"❌ <b>{code}</b> kod allaqachon mavjud!", parse_mode="HTML")
+            _clear_state(context)
+            return
+        await conn.execute(
+            "INSERT INTO redeem_codes (code, reward_coins, reward_waifu_rarity, max_uses, used_count, is_active, created_by) "
+            "VALUES ($1, $2, $3, $4, 0, 1, $5)",
+            code, coins, rarity, max_uses, user.id
+        )
+    _clear_state(context)
+    reward_text = f"💰 {coins:,} coin" if coins else ""
+    if rarity:
+        reward_text += f" + 🎲 {rarity} waifu"
+    uses_text = "Cheksiz" if max_uses == 0 else str(max_uses)
+    await query.edit_message_text(
+        f"✅ <b>PROMO KOD YARATILDI!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎫 Kod: <code>{code}</code>\n"
+        f"🎁 Mukofot: {reward_text or '—'}\n"
+        f"🔢 Limit: <b>{uses_text}</b> marta\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 Foydalanuvchilar /redeem {code} bilan ishlatishi mumkin!",
+        parse_mode="HTML"
+    )
 
 
 async def _finalize_add_waifu(query, context, user, role, group_id):

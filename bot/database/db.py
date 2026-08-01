@@ -106,8 +106,9 @@ async def init_db():
             );
             CREATE TABLE IF NOT EXISTS required_channels (
                 id SERIAL PRIMARY KEY,
-                channel_id BIGINT NOT NULL UNIQUE,
+                channel_id TEXT NOT NULL UNIQUE,
                 channel_name TEXT,
+                type TEXT DEFAULT 'channel',
                 added_by BIGINT,
                 added_at TIMESTAMP DEFAULT NOW()
             );
@@ -133,7 +134,7 @@ async def init_db():
                 name TEXT NOT NULL,
                 event_type TEXT DEFAULT 'spawn',
                 description TEXT,
-                trigger_count INTEGER DEFAULT 50,
+                trigger_every INTEGER DEFAULT 50,
                 is_active INTEGER DEFAULT 0,
                 created_by BIGINT,
                 created_at TIMESTAMP DEFAULT NOW()
@@ -141,6 +142,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS event_waifus (
                 id SERIAL PRIMARY KEY,
                 event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+                waifu_id TEXT,
                 file_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 anime TEXT NOT NULL,
@@ -240,6 +242,22 @@ async def init_db():
                 joined_at TIMESTAMP DEFAULT NOW(),
                 UNIQUE(contest_id, user_id)
             );
+            CREATE TABLE IF NOT EXISTS groups (
+                group_id BIGINT PRIMARY KEY,
+                group_name TEXT,
+                is_approved INTEGER DEFAULT 1,
+                approved_by BIGINT,
+                approved_at TIMESTAMP,
+                message_count INTEGER DEFAULT 0,
+                spawn_threshold INTEGER DEFAULT 100,
+                skip_member_check INTEGER DEFAULT 0,
+                added_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS divine_counter (
+                group_id BIGINT PRIMARY KEY,
+                exclusive_count INTEGER DEFAULT 0,
+                last_reset TIMESTAMP DEFAULT NOW()
+            );
             CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id);
             CREATE INDEX IF NOT EXISTS idx_collections_waifu ON collections(waifu_id);
             CREATE INDEX IF NOT EXISTS idx_market_status ON market(status);
@@ -247,6 +265,18 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_waifus_group ON waifus(group_id);
             CREATE INDEX IF NOT EXISTS idx_event_waifus_event ON event_waifus(event_id);
         ''')
+        # Migrations for existing deployed databases (safe to run repeatedly)
+        migrations = [
+            "ALTER TABLE events ADD COLUMN IF NOT EXISTS trigger_every INTEGER DEFAULT 50",
+            "ALTER TABLE event_waifus ADD COLUMN IF NOT EXISTS waifu_id TEXT",
+            "ALTER TABLE required_channels ALTER COLUMN channel_id TYPE TEXT USING channel_id::TEXT",
+            "ALTER TABLE required_channels ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'channel'",
+        ]
+        for migration in migrations:
+            try:
+                await conn.execute(migration)
+            except Exception as e:
+                logger.warning(f"Migration skipped: {e}")
 
 
 async def get_setting(key: str, default: str = None) -> str:
