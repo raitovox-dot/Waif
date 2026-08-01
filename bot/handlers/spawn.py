@@ -13,6 +13,7 @@ from database import waifus as waifu_db
 from database import collections as col_db
 from database import users as user_db
 from database import groups as grp_db
+from database.db import get_pool as _db_get_pool
 from database import logs as log_db
 from database import events as event_db
 from utils.helpers import get_rarity_emoji, get_coin_reward, get_bot_group_id
@@ -55,7 +56,7 @@ async def restore_active_spawns(context):
     now = datetime.now()
     restored = 0
     try:
-        pool = await grp_db.get_pool()
+        pool = await _db_get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT * FROM spawn_state WHERE waifu_id IS NOT NULL"
@@ -193,7 +194,8 @@ async def _do_spawn(context, group_id: int, is_event: bool = False, active_event
             "is_event": is_ev_flag,
             "event_id": event_id,
         }
-        await grp_db.set_spawn_state(group_id, waifu_id, now, expires_at)
+        await grp_db.set_spawn_state(group_id, waifu_id, now, expires_at,
+                                     is_event=1 if is_ev_flag else 0, event_id=event_id)
         asyncio.create_task(expire_spawn(context, group_id, SPAWN_TIMEOUT))
 
         emoji = get_rarity_emoji(rarity)
@@ -245,7 +247,8 @@ async def _do_divine_spawn(context, group_id: int):
             "is_event": False,
             "event_id": None,
         }
-        await grp_db.set_spawn_state(group_id, waifu_id, now, expires_at)
+        await grp_db.set_spawn_state(group_id, waifu_id, now, expires_at,
+                                     is_event=0, event_id=None)
         asyncio.create_task(expire_spawn(context, group_id, SPAWN_TIMEOUT * 2))
 
         price_line = f"\n💰 Narx: <b>{price:,}</b> coin" if price else ""
@@ -388,7 +391,6 @@ async def cmd_waifu_catch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Event waifuni collection ga qo'shish (event_waifus jadvalidan)
         await col_db.add_to_collection(user.id, caught_spawn["waifu_id"])
         await user_db.add_coins(user.id, coin_reward)
-        await user_db.update_total_caught(user.id)
         ev_badge = "⚡ <b>EVENT</b> "
     else:
         waifu = await waifu_db.get_waifu(caught_spawn["waifu_id"])
@@ -397,7 +399,6 @@ async def cmd_waifu_catch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await col_db.add_to_collection(user.id, caught_spawn["waifu_id"])
         await user_db.add_coins(user.id, coin_reward)
-        await user_db.update_total_caught(user.id)
         ev_badge = ""
 
         # Exclusive tutilganda divine counter oshadi

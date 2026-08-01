@@ -88,15 +88,16 @@ async def get_spawn_state(group_id: int):
         return dict(row) if row else None
 
 
-async def set_spawn_state(group_id: int, waifu_id: str, spawned_at, expires_at):
+async def set_spawn_state(group_id: int, waifu_id: str, spawned_at, expires_at,
+                         is_event: int = 0, event_id: int = None):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO spawn_state (group_id, waifu_id, spawned_at, expires_at) "
-            "VALUES ($1, $2, $3, $4) "
+            "INSERT INTO spawn_state (group_id, waifu_id, spawned_at, expires_at, is_event, event_id) "
+            "VALUES ($1, $2, $3, $4, $5, $6) "
             "ON CONFLICT (group_id) DO UPDATE "
-            "SET waifu_id=$2, spawned_at=$3, expires_at=$4",
-            group_id, waifu_id, spawned_at, expires_at
+            "SET waifu_id=$2, spawned_at=$3, expires_at=$4, is_event=$5, event_id=$6",
+            group_id, waifu_id, spawned_at, expires_at, is_event, event_id
         )
 
 

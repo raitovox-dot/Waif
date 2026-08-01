@@ -102,6 +102,7 @@ async def init_db():
                 log_type TEXT NOT NULL,
                 user_id BIGINT,
                 details TEXT,
+                group_id BIGINT,
                 created_at TIMESTAMP DEFAULT NOW()
             );
             CREATE TABLE IF NOT EXISTS required_channels (
@@ -271,6 +272,7 @@ async def init_db():
             "ALTER TABLE event_waifus ADD COLUMN IF NOT EXISTS waifu_id TEXT",
             "ALTER TABLE required_channels ALTER COLUMN channel_id TYPE TEXT USING channel_id::TEXT",
             "ALTER TABLE required_channels ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'channel'",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS group_id BIGINT",
         ]
         for migration in migrations:
             try:
