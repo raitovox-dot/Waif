@@ -170,6 +170,19 @@ async def search_waifus(query: str, limit: int = 10):
         return [dict(r) for r in rows]
 
 
+async def get_waifus_by_anime(anime: str, limit: int = 20):
+    """Anime nomi bo'yicha barcha waifularni qaytaradi"""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT w.*, g.name as group_name FROM waifus w "
+            "LEFT JOIN waifu_groups g ON w.group_id=g.id "
+            "WHERE w.is_active=1 AND w.anime ILIKE $1 ORDER BY w.rarity, w.name LIMIT $2",
+            f"%{anime}%", limit
+        )
+        return [dict(r) for r in rows]
+
+
 async def count_waifus_by_rarity() -> dict:
     pool = await get_pool()
     async with pool.acquire() as conn:

@@ -31,6 +31,19 @@ async def get_active_event():
     return await _get()
 
 
+async def get_event_multiplier() -> float:
+    """Aktiv event bo'lsa coin multiplier qaytaradi, aks holda 1.0"""
+    event = await get_active_event()
+    if not event:
+        return 1.0
+    # event jadvalida multiplier ustuni bo'lsa ishlatamiz
+    multiplier = event.get("multiplier") or event.get("coin_multiplier")
+    if multiplier and float(multiplier) > 1.0:
+        return float(multiplier)
+    # multiplier yo'q bo'lsa default 2x bonus event uchun
+    return 2.0
+
+
 async def get_daily_reward(user_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
