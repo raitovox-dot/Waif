@@ -66,3 +66,16 @@ async def count_active_listings() -> int:
     pool = await get_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval("SELECT COUNT(*) FROM market WHERE status='active'") or 0
+
+
+async def get_user_listings(seller_id: int, limit: int = 15):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT m.*, w.name, w.anime, w.rarity FROM market m "
+            "JOIN waifus w ON m.waifu_id=w.waifu_id "
+            "WHERE m.seller_id=$1 AND m.status='active' "
+            "ORDER BY m.listed_at DESC LIMIT $2",
+            seller_id, limit
+        )
+        return [dict(r) for r in rows]

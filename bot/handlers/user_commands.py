@@ -26,14 +26,17 @@ async def _check_ban(user_id: int) -> bool:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await user_db.get_or_create_user(user.id, user.username, user.full_name)
+    from utils.menu import get_main_menu
     await update.message.reply_text(
-      f"👋 Salom, <b>{user.full_name}</b>!\n\n"
-      f"🎴 <b>Waifu Catch Bot</b> ga xush kelibsiz!\n\n"
-      f"Anime qahramonlarini yig'ing, savdo qiling va kolleksiya yarating!\n\n"
-      f"📋 /help — barcha buyruqlar ro'yxati\n"
-      f"🃏 /collection — kolleksiyangiz\n"
-      f"🎁 /daily — kunlik mukofot",
-      parse_mode="HTML"
+        f"👋 Salom, <b>{user.full_name}</b>!\n\n"
+        f"🎴 <b>Waifu Catch Bot</b> ga xush kelibsiz!\n\n"
+        f"🌸 Anime qahramonlarini yig'ing, savdo qiling va\n"
+        f"kolleksiya yarating!\n\n"
+        f"📋 /help — barcha buyruqlar ro'yxati\n"
+        f"🃏 /collection — kolleksiyangiz\n"
+        f"🎁 /daily — kunlik mukofot",
+        parse_mode="HTML",
+        reply_markup=get_main_menu(),
     )
 
 
@@ -113,8 +116,6 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(text, parse_mode="HTML")
-    stk = get_daily_sticker(streak)
-    await send_stk(context.bot, update.effective_chat.id, stk)
 
 
 async def cmd_profil(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -134,60 +135,86 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await user_db.get_or_create_user(user.id, user.username, user.full_name)
 
     if not await _check_sub(update, context):
-      return
+        return
     if await _check_ban(user.id):
-      await update.message.reply_text("🚫 Siz bloklanganlar ro'yxatasiz.")
-      return
+        await update.message.reply_text("🚫 Siz bloklanganlar ro'yxatasiz.")
+        return
 
     daily = await log_db.get_daily_reward(user.id)
     now = datetime.now()
 
     if daily and daily.get("last_daily"):
-      last = datetime.fromisoformat(daily["last_daily"])
-      diff = now - last
-      if diff.total_seconds() < 86400:
-          remaining = timedelta(seconds=86400) - diff
-          h = int(remaining.total_seconds() // 3600)
-          m = int((remaining.total_seconds() % 3600) // 60)
-          await update.message.reply_text(
-              f"⏰ Keyingi daily: <b>{h}s {m}d</b> keyin",
-              parse_mode="HTML"
-          )
-          return
+        last = datetime.fromisoformat(daily["last_daily"])
+        diff = now - last
+        if diff.total_seconds() < 86400:
+            remaining = timedelta(seconds=86400) - diff
+            h = int(remaining.total_seconds() // 3600)
+            m = int((remaining.total_seconds() % 3600) // 60)
+            from utils.menu import get_main_menu
+            await update.message.reply_text(
+                f"⏰ Keyingi daily: <b>{h}s {m}d</b> keyin",
+                parse_mode="HTML",
+                reply_markup=get_main_menu(),
+            )
+            return
 
     streak = (daily.get("streak", 0) + 1) if daily else 1
     if streak > 7:
-      streak = 1
+        streak = 1
 
     base_coins = 100 + (streak * 20)
     multiplier = await log_db.get_event_multiplier()
     coins = int(base_coins * multiplier)
 
+    # ── Gacha waifu (har kuni 20% umumiy ehtimol, rarity bilan) ──
+    # Common 80%, Rare 10%, SR 5%, Epic 3%, Mythick 1%,
+    # Legendary 0.9%, Premium 0.099%, Exclusive 0.001%
+    DAILY_RARITIES = ["Common", "Rare", "Super Rare", "Epic",
+                      "Mythick", "Legendary", "Premium", "Exclusive"]
+    DAILY_WEIGHTS  = [80000, 10000, 5000, 3000, 1000, 900, 99, 1]
+
     bonus_waifu = None
-    if random.random() < 0.05:
-      bonus_waifu = await waifu_db.get_random_waifu("Common")
-      if bonus_waifu:
-          await col_db.add_to_collection(user.id, bonus_waifu["waifu_id"])
+    if random.random() < 0.20:           # 20% umumiy ehtimol
+        picked_rarity = random.choices(DAILY_RARITIES, weights=DAILY_WEIGHTS, k=1)[0]
+        bonus_waifu = await waifu_db.get_random_waifu(picked_rarity)
+        if not bonus_waifu:              # o'sha rarityda waifu yo'q bo'lsa
+            bonus_waifu = await waifu_db.get_random_waifu()
+        if bonus_waifu:
+            await col_db.add_to_collection(user.id, bonus_waifu["waifu_id"])
 
     await user_db.add_coins(user.id, coins)
     await log_db.set_daily_reward(user.id, streak)
-    await log_db.add_log("daily", user_id=user.id, details=f"coins={coins} streak={streak}")
+    await log_db.add_log("daily", user_id=user.id,
+                          details=f"coins={coins} streak={streak}")
 
     streak_bar = "🔥" * streak + "⬜" * (7 - streak)
+
     text = (
-      f"🎁 <b>DAILY REWARD</b>\n"
-      f"━━━━━━━━━━━━━━━━━━━━\n"
-      f"💰 +<b>{coins:,}</b> coin\n"
-      f"🔥 Streak: <b>{streak}/7</b>  {streak_bar}\n"
+        f"🎁 <b>KUNLIK MUKOFOT</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"+{coins:,} 🌸 valuta qo'shildi!\n"
+        f"🔥 Streak: <b>{streak} kun</b>  {streak_bar}\n"
     )
     if multiplier > 1:
-      text += f"⚡ Event bonus: x{multiplier}!\n"
+        text += f"⚡ Event bonus: ×{multiplier}!\n"
+
     if bonus_waifu:
-      emoji = get_rarity_emoji(bonus_waifu["rarity"])
-      text += f"\n🎉 Bonus waifu: {emoji} <b>{bonus_waifu['name']}</b>!\n"
+        rarity_emoji = get_rarity_emoji(bonus_waifu["rarity"])
+        text += (
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🌸 Nomi: <b>{bonus_waifu['name']}</b>\n"
+            f"🎌 Anime: <b>{bonus_waifu['anime']}</b>\n"
+            f"{rarity_emoji} Nodirligi: {rarity_emoji} <b>{bonus_waifu['rarity']}</b>\n"
+            f"🆔 ID: <code>{bonus_waifu['waifu_id']}</code>\n"
+        )
     text += "━━━━━━━━━━━━━━━━━━━━"
 
-    await update.message.reply_text(text, parse_mode="HTML")
+    from utils.menu import get_main_menu
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=get_main_menu(),
+    )
 
 
 async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE):

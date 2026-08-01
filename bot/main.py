@@ -378,6 +378,11 @@ def build_app(token: str) -> Application:
 
 async def _private_message_handler(update: Update, context):
     """Private chat text xabarlarini yo'naltirish."""
+    # Menyu tugmalarini birinchi tekshirish
+    from utils.menu import handle_menu_button
+    if await handle_menu_button(update, context):
+        return
+    # Boshqa text → admin input
     await handle_admin_input(update, context)
 
 
