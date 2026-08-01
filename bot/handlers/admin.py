@@ -41,6 +41,7 @@ BTN_ADDADMIN  = "👑 Admin qo'shish"
 BTN_RMADMIN   = "🔴 Admin o'chirish"
 BTN_ADDSUBADM = "🟡 Sub-Admin qo'shish"
 BTN_ADDGROUP  = "🔓 Guruh qo'shish"
+BTN_EMERGENCY = "🚨 Emergency Mode"
 BTN_CLOSE     = "🚪 Panelni yopish"
 
 # Sub-admin faqat ko'ra oladigan tugmalar
@@ -52,7 +53,7 @@ ALL_PANEL_BUTTONS = {
     BTN_BAN, BTN_UNBAN, BTN_BROADCAST, BTN_EVENT,
     BTN_STATS, BTN_SPAWN, BTN_TITLE, BTN_USERS,
     BTN_ADDADMIN, BTN_RMADMIN, BTN_ADDSUBADM, BTN_ADDGROUP,
-    BTN_CLOSE,
+    BTN_EMERGENCY, BTN_CLOSE,
 }
 
 SUB_ADMIN_BLOCKED_RARITY = {"Mythick", "Legendary", "Premium", "Exclusive", "Divine"}
@@ -148,6 +149,7 @@ def _panel_kb(role: str) -> ReplyKeyboardMarkup:
             [BTN_TITLE, BTN_USERS],
             [BTN_ADDADMIN, BTN_ADDSUBADM],
             [BTN_RMADMIN, BTN_ADDGROUP],
+            [BTN_EMERGENCY],
             [BTN_CLOSE],
         ]
     else:  # admin
@@ -160,6 +162,7 @@ def _panel_kb(role: str) -> ReplyKeyboardMarkup:
             [BTN_STATS, BTN_SPAWN],
             [BTN_TITLE, BTN_USERS],
             [BTN_ADDCH, BTN_RMCH],
+            [BTN_EMERGENCY],
             [BTN_CLOSE],
         ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -629,6 +632,32 @@ async def handle_panel_button(update: Update, context: ContextTypes.DEFAULT_TYPE
     if text == BTN_STATS:
         _clear_state(context)
         await _show_stats(update.message)
+        return
+
+    # ── Emergency Mode ──
+    if text == BTN_EMERGENCY:
+        _clear_state(context)
+        if not is_god_admin(user.id) and not await log_db.is_full_admin(user.id):
+            await update.message.reply_text("❌ Faqat to'liq adminlar uchun.", reply_markup=kb)
+            return
+        from handlers.admin_extra import toggle_emergency_mode
+        from database.db import get_setting
+        current = await get_setting("emergency_mode", "0")
+        status = "🔴 AKTIV" if current == "1" else "🟢 NAKTIV"
+        await update.message.reply_text(
+            f"🚨 <b>EMERGENCY MODE</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"Hozirgi holat: <b>{status}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{'🔴 O\'chirish uchun' if current == '1' else '🚨 Yoqish uchun'} tugmani bosing:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    f"{'🔴 Emergency O\'chirish' if current == '1' else '🚨 Emergency Yoqish'}",
+                    callback_data="adm_emergency_toggle"
+                )
+            ]])
+        )
         return
 
     # ── Spawn ──
@@ -1400,6 +1429,15 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("adm_evwaifus_"):
         eid = int(data[13:])
         await _show_event_waifus(query, eid)
+        return
+
+    # ── Emergency Mode toggle ──
+    if data == "adm_emergency_toggle":
+        if not await log_db.is_full_admin(user.id) and not is_god_admin(user.id):
+            await query.answer("❌ Ruxsatingiz yo'q.", show_alert=True)
+            return
+        from handlers.admin_extra import toggle_emergency_mode
+        await toggle_emergency_mode(update, context, query)
         return
 
     if data == "adm_evlist_back":

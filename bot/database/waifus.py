@@ -245,3 +245,14 @@ async def count_waifus_in_group(group_id: int) -> int:
         return await conn.fetchval(
             "SELECT COUNT(*) FROM waifus WHERE is_active=1 AND group_id=$1", group_id
         ) or 0
+
+
+# ── Alias funksiyalar (backward compatibility) ──
+async def get_waifu_by_id(waifu_id: str):
+    """get_waifu uchun alias"""
+    return await get_waifu(waifu_id)
+
+
+async def update_waifu(waifu_id: str, fields: dict):
+    """edit_waifu uchun alias (dict argument bilan)"""
+    return await edit_waifu(waifu_id, **fields)

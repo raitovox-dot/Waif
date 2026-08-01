@@ -102,52 +102,50 @@ async def init_db():
                 log_type TEXT NOT NULL,
                 user_id BIGINT,
                 details TEXT,
-                group_id BIGINT,
                 created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS required_channels (
+                id SERIAL PRIMARY KEY,
+                channel_id BIGINT NOT NULL UNIQUE,
+                channel_name TEXT,
+                added_by BIGINT,
+                added_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS allowed_groups (
+                group_id BIGINT PRIMARY KEY,
+                group_name TEXT,
+                added_by BIGINT,
+                added_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS group_members (
+                group_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                PRIMARY KEY (group_id, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS group_settings (
+                group_id BIGINT PRIMARY KEY,
+                spawn_interval INTEGER DEFAULT 100,
+                is_active INTEGER DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT NOW()
             );
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
-                event_type TEXT DEFAULT 'custom',
+                event_type TEXT DEFAULT 'spawn',
                 description TEXT,
-                trigger_every INTEGER DEFAULT 50,
+                trigger_count INTEGER DEFAULT 50,
                 is_active INTEGER DEFAULT 0,
                 created_by BIGINT,
                 created_at TIMESTAMP DEFAULT NOW()
             );
             CREATE TABLE IF NOT EXISTS event_waifus (
                 id SERIAL PRIMARY KEY,
-                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-                waifu_id TEXT NOT NULL,
+                event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
                 file_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 anime TEXT NOT NULL,
-                rarity TEXT NOT NULL DEFAULT 'Exclusive',
+                rarity TEXT NOT NULL,
                 price BIGINT DEFAULT 0,
-                added_by BIGINT,
-                added_at TIMESTAMP DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS divine_counter (
-                group_id BIGINT PRIMARY KEY,
-                exclusive_count INTEGER DEFAULT 0,
-                last_reset TIMESTAMP DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS groups (
-                group_id BIGINT PRIMARY KEY,
-                group_name TEXT,
-                is_approved INTEGER DEFAULT 1,
-                approved_by BIGINT,
-                approved_at TIMESTAMP,
-                added_at TIMESTAMP DEFAULT NOW(),
-                message_count INTEGER DEFAULT 0,
-                spawn_threshold INTEGER DEFAULT 100,
-                skip_member_check INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS required_channels (
-                id SERIAL PRIMARY KEY,
-                channel_id TEXT NOT NULL UNIQUE,
-                channel_name TEXT,
-                type TEXT DEFAULT 'channel',
                 added_by BIGINT,
                 added_at TIMESTAMP DEFAULT NOW()
             );
@@ -191,6 +189,57 @@ async def init_db():
                 value TEXT,
                 updated_at TIMESTAMP DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS redeem_codes (
+                id SERIAL PRIMARY KEY,
+                code TEXT NOT NULL UNIQUE,
+                reward_coins BIGINT DEFAULT 0,
+                reward_waifu_rarity TEXT,
+                max_uses INTEGER DEFAULT 1,
+                used_count INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_by BIGINT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS redeem_history (
+                id SERIAL PRIMARY KEY,
+                code TEXT NOT NULL,
+                user_id BIGINT NOT NULL,
+                redeemed_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(code, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS bonus_claimed (
+                user_id BIGINT PRIMARY KEY,
+                claimed_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS lucky_cooldown (
+                user_id BIGINT PRIMARY KEY,
+                last_lucky TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                user_id BIGINT PRIMARY KEY,
+                harem_view TEXT DEFAULT 'list',
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS contest (
+                id SERIAL PRIMARY KEY,
+                group_id BIGINT,
+                title TEXT NOT NULL,
+                description TEXT,
+                prize_coins BIGINT DEFAULT 0,
+                prize_waifu_rarity TEXT,
+                end_time TIMESTAMP,
+                is_active INTEGER DEFAULT 1,
+                created_by BIGINT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS contest_entries (
+                id SERIAL PRIMARY KEY,
+                contest_id INTEGER REFERENCES contest(id) ON DELETE CASCADE,
+                user_id BIGINT NOT NULL,
+                score INTEGER DEFAULT 0,
+                joined_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(contest_id, user_id)
+            );
             CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id);
             CREATE INDEX IF NOT EXISTS idx_collections_waifu ON collections(waifu_id);
             CREATE INDEX IF NOT EXISTS idx_market_status ON market(status);
@@ -198,19 +247,20 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_waifus_group ON waifus(group_id);
             CREATE INDEX IF NOT EXISTS idx_event_waifus_event ON event_waifus(event_id);
         ''')
-        # price ustunini qo'shamiz (eski DB bilan moslik)
-        try:
-            await conn.execute("ALTER TABLE waifus ADD COLUMN IF NOT EXISTS price BIGINT DEFAULT 0")
-        except Exception:
-            pass
-        try:
-            await conn.execute("ALTER TABLE waifus ADD COLUMN IF NOT EXISTS group_id INTEGER")
-        except Exception:
-            pass
-        # spawn_state ga is_event va event_id qo'shamiz
-        try:
-            await conn.execute("ALTER TABLE spawn_state ADD COLUMN IF NOT EXISTS is_event INTEGER DEFAULT 0")
-            await conn.execute("ALTER TABLE spawn_state ADD COLUMN IF NOT EXISTS event_id INTEGER")
-        except Exception:
-            pass
-    logger.info('PostgreSQL database initialized successfully')
+
+
+async def get_setting(key: str, default: str = None) -> str:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT value FROM bot_settings WHERE key=$1", key)
+        return row['value'] if row else default
+
+
+async def set_setting(key: str, value: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO bot_settings (key, value) VALUES ($1, $2) "
+            "ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=NOW()",
+            key, value
+        )
