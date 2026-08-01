@@ -22,5 +22,5 @@ COPY bot/ ./bot/
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Botni ishga tushirish
+# Ishga tushirish
 CMD ["python3", "-u", "bot/main.py"]

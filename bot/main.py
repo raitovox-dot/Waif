@@ -400,6 +400,15 @@ async def on_startup(app: Application):
     await init_db()
     logger.info("✅ DB initialized")
 
+    # GitHub backupdan tiklash (agar DB bo'sh bo'lsa)
+    try:
+        from utils.github_backup import restore_from_github
+        restored = await restore_from_github()
+        if restored:
+            logger.info("✅ GitHub backupdan ma'lumotlar tiklandi")
+    except Exception as e:
+        logger.warning(f"GitHub restore xatosi: {e}")
+
     # Buyruqlarni ro'yxatdan o'tkazish
     try:
         await app.bot.set_my_commands(
@@ -420,6 +429,25 @@ async def on_startup(app: Application):
         logger.info("✅ Spawns restored")
     except Exception as e:
         logger.warning(f"Spawn restore error: {e}")
+
+    # GitHub backup schedulerni ishga tushirish (har 6 soatda)
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from utils.github_backup import backup_to_github
+
+        scheduler = AsyncIOScheduler(timezone="UTC")
+        scheduler.add_job(
+            backup_to_github,
+            trigger='interval',
+            hours=6,
+            id='github_backup',
+            replace_existing=True,
+            max_instances=1,
+        )
+        scheduler.start()
+        logger.info("✅ GitHub backup scheduler ishga tushdi (har 6 soatda)")
+    except Exception as e:
+        logger.warning(f"Scheduler xatosi: {e}")
 
 
 # ════════════════════════════════════════
