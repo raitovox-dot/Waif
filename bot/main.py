@@ -459,9 +459,10 @@ async def on_startup(app: Application):
 # Main
 # ════════════════════════════════════════
 def main():
-    token = os.environ.get('BOT_TOKEN')
+    token = os.environ.get('BOT_TOKEN', '').strip()
     if not token:
-        logger.error('BOT_TOKEN not found!')
+        logger.error('❌ BOT_TOKEN topilmadi! Railway → Variables ga BOT_TOKEN qo\'ying.')
+        logger.error('   https://railway.app → sizning service → Variables')
         sys.exit(1)
 
     webhook_url = os.environ.get('WEBHOOK_URL', '')
